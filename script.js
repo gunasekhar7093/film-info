@@ -13,20 +13,28 @@ form.addEventListener("submit", (event) => {
   searchMovie();
 });
 
+document.querySelectorAll("[data-search]").forEach((item) => {
+  item.addEventListener("click", () => {
+    input.value = item.dataset.search;
+    searchMovie();
+    document.getElementById("search").scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+});
+
 async function searchMovie() {
   const movie = input.value.trim();
 
   if (!movie) {
     input.focus();
-    showState("⌕", "Start with a movie title", "Enter the name of a film in the search box above and we’ll find it for you.");
-    resultBadge.textContent = "SEARCH FOR A FILM";
-    resultsTitle.textContent = "Your discovery space";
+    showState("⌕", "Got a title in mind?", "Type a movie name into the search box and I'll look it up.");
+    resultsTitle.textContent = "The spotlight.";
+    resultBadge.textContent = "ADD A MOVIE TITLE";
     return;
   }
 
   setLoading(true);
-  resultBadge.textContent = "SEARCHING";
-  resultsTitle.textContent = "Finding your film";
+  resultBadge.textContent = "LOOKING IT UP";
+  resultsTitle.textContent = "One second…";
 
   try {
     const url = new URL(BASE_URL);
@@ -38,29 +46,28 @@ async function searchMovie() {
 
     const response = await fetch(url.toString());
     if (!response.ok) {
-      if (response.status === 401) throw new Error("The movie service rejected the API key. Please check the TMDB API configuration.");
-      if (response.status === 429) throw new Error("There have been too many requests. Please wait a moment and try again.");
-      throw new Error("We couldn't reach the movie database just now. Please try again.");
+      if (response.status === 401) throw new Error("The movie service couldn't authorise this request. The TMDB API key may need checking.");
+      if (response.status === 429) throw new Error("Lots of searches are happening right now. Give it a moment and try again.");
+      throw new Error("The movie database isn't responding right now. Please try again in a bit.");
     }
 
     const data = await response.json();
     const movies = Array.isArray(data.results) ? data.results : [];
     if (!movies.length) {
-      resultsTitle.textContent = "No matches this time";
-      resultBadge.textContent = "0 RESULTS";
-      showState("⌕", "No films found for “" + movie + "”", "Try a shorter title, check the spelling, or search for another movie.");
+      resultsTitle.textContent = "Nothing came up.";
+      resultBadge.textContent = "NO MATCHES";
+      showState("⌕", "Couldn't find “" + movie + "”", "Try a different spelling or a shorter title. Sometimes the simplest search works best.");
       return;
     }
 
-    // The closest search result is shown first, matching the original single-movie experience.
     renderMovie(movies[0]);
-    resultsTitle.textContent = "Your film, found";
-    resultBadge.textContent = movies.length + (movies.length === 1 ? " MATCH" : " MATCHES");
+    resultsTitle.textContent = "Here's your movie.";
+    resultBadge.textContent = movies.length + (movies.length === 1 ? " RESULT" : " RESULTS");
   } catch (error) {
     console.error("Movie search failed:", error);
-    resultsTitle.textContent = "Something went wrong";
-    resultBadge.textContent = "TRY AGAIN";
-    showState("!", "We couldn't load that film", error.message || "Check your internet connection and try again.");
+    resultsTitle.textContent = "A little hiccup.";
+    resultBadge.textContent = "SEARCH FAILED";
+    showState("!", "Couldn't get the details just now.", error.message || "Check your internet connection and give it another try.");
   } finally {
     setLoading(false);
   }
@@ -68,30 +75,31 @@ async function searchMovie() {
 
 function renderMovie(movie) {
   const title = escapeHTML(movie.title || movie.original_title || "Untitled movie");
-  const year = movie.release_date ? movie.release_date.slice(0, 4) : "Release date unavailable";
+  const year = movie.release_date ? movie.release_date.slice(0, 4) : "Year unavailable";
   const rating = Number.isFinite(Number(movie.vote_average)) && Number(movie.vote_average) > 0
     ? Number(movie.vote_average).toFixed(1) + " / 10"
     : "Not rated yet";
-  const overview = movie.overview ? escapeHTML(movie.overview) : "No synopsis is available for this film yet.";
+  const overview = movie.overview ? escapeHTML(movie.overview) : "No synopsis has been added for this film yet.";
   const poster = movie.poster_path ? IMAGE_BASE + movie.poster_path : "";
+  const releaseDate = movie.release_date || "Release date unavailable";
 
   result.innerHTML = `
     <article class="movie-card">
       <div class="poster-wrap">
         ${poster
-          ? `<img class="movie-poster" src="${poster}" alt="Poster for ${title}" loading="lazy" referrerpolicy="no-referrer">`
+          ? `<img class="movie-poster" src="${poster}" alt="Movie poster for ${title}" loading="lazy" referrerpolicy="no-referrer">`
           : '<div class="movie-poster poster-missing"><span aria-hidden="true">▧</span><span>Poster unavailable</span></div>'}
       </div>
       <div class="movie-info">
-        <div class="movie-overline"><span class="movie-tag">MOVIE SPOTLIGHT</span><span class="movie-year">${escapeHTML(year)}</span></div>
+        <div class="movie-overline"><span class="movie-tag">ON THE RADAR</span><span class="movie-year">${escapeHTML(year)}</span></div>
         <h3>${title}</h3>
         <div class="movie-meta">
           <span class="meta-pill"><span class="rating-star" aria-hidden="true">★</span><strong>${escapeHTML(rating)}</strong></span>
-          <span class="meta-pill"><span aria-hidden="true">◷</span>${escapeHTML(movie.release_date || "Release date TBA")}</span>
+          <span class="meta-pill"><span aria-hidden="true">◷</span>${escapeHTML(releaseDate)}</span>
         </div>
-        <h4>The story</h4>
+        <h4>A little about the film</h4>
         <p class="movie-overview">${overview}</p>
-        <div class="movie-footnote">Movie information and poster artwork provided by TMDB. Ratings reflect community votes and may change over time.</div>
+        <div class="movie-footnote">Film details and poster artwork via TMDB. Ratings come from viewers and can change over time.</div>
       </div>
     </article>
   `;
@@ -109,7 +117,7 @@ function renderMovie(movie) {
 
 function showState(icon, heading, message) {
   result.innerHTML = `
-    <div class="state-panel">
+    <div class="state-panel" role="status">
       <div class="state-icon" aria-hidden="true">${escapeHTML(icon)}</div>
       <h3>${escapeHTML(heading)}</h3>
       <p>${escapeHTML(message)}</p>
@@ -122,19 +130,16 @@ function setLoading(isLoading) {
   input.disabled = isLoading;
   button.innerHTML = isLoading
     ? '<span class="spinner" aria-hidden="true"></span><span>Searching</span>'
-    : '<span>Find a film</span><span aria-hidden="true">↗</span>';
+    : 'Search <span aria-hidden="true">↗</span>';
 
   if (isLoading) {
     result.innerHTML = `
       <div class="state-panel" role="status">
         <div class="spinner" aria-hidden="true"></div>
-        <h3>Finding your film…</h3>
-        <p>Searching the movie database. Just a moment.</p>
+        <h3>Finding it for you…</h3>
+        <p>Checking the movie database. Won't be long.</p>
       </div>
     `;
-  } else {
-    input.disabled = false;
-    button.disabled = false;
   }
 }
 
